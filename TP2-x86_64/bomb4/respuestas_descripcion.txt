@@ -1,0 +1,120 @@
+Descripción de la Resolución
+
+
+Fase 1
+
+Solución: Confia en el tiempo, que suele dar dulces salidas a muchas amargas dificultades
+
+Metodología:
+1.  Se analizó el código ensamblador de la función phase_1.
+2.  Se identificó una llamada a la función "strings_not_equal" precedida por la carga de una dirección
+    de memoria en el registro rsi mediante lea rsi,[rip+0xc7c6a] (calculada como 0x4c9a60).
+3.  strings_not_equal compara el string del input del usuario con el string apuntado por rsi.
+4.  Se observó que si la función strings_not_equal devuelve un valor distinto de cero 
+    (indicando que los strings son diferentes), la ejecución salta a la función explode_bomb.
+    Por lo tanto, para superar la fase, los strings deben ser iguales.
+5.  Se utilizó GDB para determinar el contenido del string esperado.
+6.    Se estableció un breakpoint antes de la llamada a strings_not_equal y se ejecutó la bomba.
+7.  En el punto de interrupción, se inspeccionó la memoria apuntada por rsi usando el comando x/s $rsi.
+8.  La cadena de texto mostrada por GDB fue la solución requerida para la Fase 1.
+
+
+Fase 2
+
+Solución: -1 2080
+
+Metodología:
+1.  Se analizó el código ensamblador de phase_2. Se identificaron dos llamadas a strtol para parsear dos números enteros (num1, num2) desde la línea de input.
+2.  Se identificó una llamada a la función misterio. 
+3.  Se determinaron los argumentos pasados: el primero (edi) era num1 + num2 - 32, 
+    y el segundo (esi) era num1. Se observó que misterio también accedía al valor de num2.
+4.  Se analizó el código ensamblador de misterio. Se determinó que realiza dos comprobaciones:
+    a.  Conteo de Bits: Calcula el número de bits activos (con valor 1) en su primer argumento (num1 + num2 - 32) mediante un bucle de 32 iteraciones. 
+    Compara este conteo con 11 (cmp edx, 0xb). Si no es 11, explota.
+    b.  Comparación XOR: Calcula num1 XOR num2 y comprueba si el resultado es negativo (bit de signo activado). Si no es negativo, explota.
+5.  Se buscaron dos números num1 y num2 que cumplieran ambas condiciones:
+    a.  count_set_bits(num1 + num2 - 32) == 11
+    b.  (num1 XOR num2) < 0
+6.  Para la condición (a), se eligió un valor conocido con 11 bits activos, como 2047 (0x7FF).
+    Esto requiere num1 + num2 - 32 = 2047, o num1 + num2 = 2079.
+7.  Para la condición (b), la forma más simple es que un número sea positivo y el otro negativo.
+8.  Se probó la combinación num1 = -1 y num2 = 2080:
+    * Condición (a): (-1) + 2080 - 32 = 2047. Tiene 11 bits. Cumple.
+    * Condición (b): (-1) XOR 2080 (0xFFFFFFFF XOR 0x820) es 0xFFFFF7DF. Es negativo. Cumple.
+9.  Por lo tanto, la solución es -1 2080.
+
+
+Fase 3
+
+Solución: abajar 11
+
+Metodología:
+1.  Se analizó phase_3. Se vio que usa sscanf para leer un string y un entero del input.
+2.  Se identificó una llamada a readlines que carga el contenido del archivo palabras.txt.
+3.  Se identificó una llamada a cuenta, pasándole el string del usuario, el array de palabras, límites 0 y count-1,
+    y un puntero para guardar un resultado.
+4.  Se analizó cuenta. Se confirmó que implementa una búsqueda binaria recursiva. Crucialmente, incrementa el valor entero apuntado
+    por su quinto argumento en cada llamada (recursiva o inicial), contando así las iteraciones (N). 
+    También se encontró una comprobación explícita: si N > 11, la bomba explota.
+5.  En phase_3, después de llamar a cuenta, se realizan dos comprobaciones sobre el contador N:
+    a.  cmp [rsp+0x14], eax (donde `eax` es el entero del usuario) seguido de jne explode_bomb: N debe ser igual al número 
+    ingresado por el usuario.
+    b.  cmp [rsp+0x14], 0x6 seguido de jle explode_bomb: N debe ser estrictamente mayor que 6.
+6.  El requisito combinado es encontrar una palabra P en palabras.txt cuya búsqueda binaria requiera N iteraciones, donde 7 <= N <= 11,
+    y el input debe ser P N.
+7.  Se utilizó el script de Python fase_3.py (en la carpeta bomb4) para analizar el archivo palabras.txt. 
+    Este script simula la búsqueda binaria de la funcion cuenta y cuenta las iteraciones para cada palabra.
+8.  El análisis mostró que la palabra abajar requiere 11 iteraciones.
+9.  Enronces, la solución abajar 11 es válida para superar la Fase 3. 
+(Esta misma entrada, agregando "abrete_sesamo" como tercer argumento, se utilizó luego para activar la fase secreta.).
+
+
+Fase 4
+
+Solución: 38o6j5
+
+Metodología:
+1.  Se analizó phase_4. Se identificó que lee un input y verifica que su longitud sea exactamente 6 caracteres (`cmp rax, 0x6`).
+2.  Se encontró un bucle (402174 a 402197) que transforma cada uno de los 6 caracteres del input.
+    a.  Para cada input_char, calcula un índice tomando los 4 bits inferiores de su valor ASCII: index = input_char & 0xF.
+    b.  Usa este índice para buscar un carácter en un array de mapeo estático ubicado en 0x4cde40: transformed_char = map_array[index].
+    c.  Almacena el transformed_char en un nuevo buffer en la pila.
+3.  Después del bucle, el string transformado de 6 caracteres se compara con un string objetivo estático ubicado en 0x4c709f. Si no coinciden, la bomba explota.
+4.  Se usó GDB para obtener los datos necesarios:
+    a.  String Objetivo: (gdb) x/s 0x4c709f -> "colina"
+    b.  Array de Mapeo (16 bytes): (gdb) x/16cb 0x4cde40 -> ['e', 'g', 'm', 'c', 'f', 'a', 'i', 'j', 'o', 'p', 'n', 'h', 'd', 'b', 'k', 'l'] (índices 0-15).
+5.  Se aplicó la lógica inversa: Para cada carácter del string objetivo "colina", se buscó su índice en el array de mapeo 
+    y luego se encontró un carácter de input cuyos 4 bits inferiores coincidieran con ese índice:
+    * c -> map[3] -> 3 
+    * o -> map[8] -> 8 
+    * l -> map[15] -> o 
+    * i -> map[6] -> 6 
+    * n -> map[10] -> j
+    * a -> map[5] -> 5 
+6.  La concatenación de estos caracteres de input resultó en la clave: 38o6j5.
+
+
+Fase Secreta
+
+Solución: 7
+
+Metodología:
+1.  Activación: Se analizó phase_defused. Se determinó que la lógica de activación se ejecuta solo después de completar la Fase 4.
+    Re-parsea el input guardado de la Fase 3 usando sscanf, requiere 3 ítems, y compara el primer string parseado con una contraseña secreta. Usando GDB (x/s 0x4c7156), se encontró que la contraseña es "abrete_sesamo", 
+    Para activar la fase, se modificó el input de la Fase 3 a abajar 11 abrete_sesamo. Esto cumplió las condiciones de phase_defused.
+2.  Análisis de secret_phase: Se analizó el código. Lee un número entero input_num, valida que 1 <= input_num <= 1001, y llama a fun7(n1, input_num), donde n1 es la raíz de un árbol binario. 
+    Requiere que fun7 devuelva exactamente 4 (cmp eax, 0x4).
+3.  Análisis de fun7: Se analizó fun7 y se confirmó que implementa una búsqueda recursiva en un árbol binario,
+    retornando 0 si encuentra el valor, -1 si el nodo es NULL, 2*L si va a la izquierda, y 2*R+1 si va a la derecha.
+4.  Análisis:
+    a.  Se usó GDB (x/3aw) para examinar el árbol empezando en n1. Se encontró que n1 (valor 36) tiene un puntero izquierdo NULL.
+    b.  La ruta requerida para obtener 4 era imposible debido al puntero NULL en la raíz. 
+        por lo que explore el arbol a derecha:
+        Raíz n1: Valor=36, Izq=NULL, Der=0x4f9210
+        Nodo n21 en 0x4f9210: Valor=8, Izq=NULL, Der=0x4f9290 (x/3aw 0x4f9210)
+        Nodo n31 en 0x4f9290: Valor=6, Izq=NULL, Der=0x4f9110 (x/3aw 0x4f9290)
+        Nodo n41 en 0x4f9110: Valor=1, Izq=NULL, Der=NULL (Nodo Hoja) (x/3aw 0x4f9110)
+    c.  Solución: Dado que el análisis llegó a un punto muerto se probó por fuerza bruta con números del 1 al 1001,
+        hasta encontrar una solución válida. y se llego a que 7 es el numero que defusa la fase secreta.
+
+
